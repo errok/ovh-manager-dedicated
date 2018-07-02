@@ -101,32 +101,33 @@
                         data-ng-disabled="load.exportCSV">
                         <span data-translate="billing_export_csv"></span>
                 </button>
-                <div class="dropdown d-inline-block">
+                <div class="btn-group">
                     <button type="button"
                             class="btn btn-default dropdown-toggle"
-                            id="accountBillingAutorenewActions"
                             data-toggle="dropdown"
                             aria-haspopup="true"
-                            aria-expanded="true">
+                            aria-expanded="false">
                         <span data-translate="autorenew_service_action_title"></span>
-                        <span class="caret" aria-hidden="true"></span>
+                        <span class="fa fa-chevron-down"
+                              aria-hidden="true"></span>
                     </button>
-                    <ul class="dropdown-menu"
-                        aria-labelledby="accountBillingAutorenewActions">
+                    <ul class="dropdown-menu">
                         <li>
-                            <a data-ui-sref="app.account.payment.mean"
+                            <a href="#/billing/mean"
                                data-translate="autorenew_manage_my_payment_means">
                             </a>
                         </li>
-                        <li data-ng-if="automaticRenewV2Mean.available">
-                            <a target="_blank"
-                               rel="noopener"
+                        <li>
+                            <a data-ng-if="automaticRenewV2Mean.available"
                                data-ng-href="{{ urls.renewAlign }}"
-                               data-translate="autorenew_service_update_date_button_caption">
+                               data-translate="autorenew_service_update_date_button_caption"
+                               target="_blank">
                             </a>
                         </li>
-                        <li data-ng-if="canDisableAllDomains">
-                            <button type="button"
+                        <li>
+                            <button class="btn btn-link"
+                                    type="button"
+                                    data-ng-if="canDisableAllDomains"
                                     data-ng-click="disableAutorenewForDomains()"
                                     data-translate="autorenew_service_disable_all_domains">
                             </button>
