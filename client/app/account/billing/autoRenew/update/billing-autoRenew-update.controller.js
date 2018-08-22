@@ -1,199 +1,270 @@
 /**
- * @ngdoc controller
- * @name Billing.controllers.Method.Add
- * @description
+ *  @typedef ServiceType
+ *  @type {object}
+ *  @property {string} name
+ *  @property {object[]} services The services given in input of this type
+ *  @property {boolean} allowsRenewalChange True if this type of service allows changing the type of renewal for its services
  */
-angular.module("Billing.controllers").controller("Billing.controllers.AutoRenew.update", [
-    "$rootScope",
-    "$scope",
-    "$q",
-    "$translate",
-    "BillingAutoRenew",
-    "Alerter",
-    "AUTORENEW_EVENT",
-    "UserContractService",
-    function ($rootScope, $scope, $q, $translate, AutoRenew, Alerter, AUTORENEW_EVENT, UserContractService) {
-        "use strict";
+angular
+    .module("Billing.controllers")
+    .controller("billingAutoRenewUpdateCtrl", class $ctrl {
+        constructor ($filter, $q, $state, $translate, Alerter, BillingAutoRenew, billingRenewHelper, UserContractService) {
+            this.$filter = $filter;
+            this.$q = $q;
+            this.$state = $state;
+            this.$translate = $translate;
 
-        $scope.selectedServices = $scope.currentActionData.services;
-        $scope.nicRenew = $scope.currentActionData.nicRenew;
-        $scope.urlRenew = $scope.currentActionData.urlRenew;
-        $scope.agree = {};
-
-        $scope.loading = {
-            contracts: false
-        };
-
-        angular.forEach($scope.selectedServices, (service) => {
-            if (service.renew.automatic) {
-                service.newRenewType = "auto";
-                service.oldRenewType = "auto";
-                service.newRenewPeriod = service.renew.period;
-            } else if (service.renew.forced) {
-                service.newRenewType = "auto";
-                service.oldRenewType = "auto";
-                if (service.possibleRenewPeriod.length === 1) {
-                    service.newRenewPeriod = service.possibleRenewPeriod[0];
-                }
-            } else {
-                service.newRenewType = "manuel";
-                service.oldRenewType = "manuel";
-                if (service.possibleRenewPeriod.length === 1) {
-                    service.newRenewPeriod = service.possibleRenewPeriod[0];
-                }
-            }
-        });
-        $scope.hasChanged = false;
-
-        $scope.loadContracts = () => {
-            $scope.contracts = [];
-
-            if (hasServiceChangedToAutorenew()) {
-                $scope.loading.contracts = true;
-
-                return UserContractService.getAgreementsToValidate((contract) => AutoRenew.getAutorenewContractIds().includes(contract.contractId))
-                    .then(
-                        (contracts) =>
-                            ($scope.contracts = contracts.map((a) => ({
-                                name: a.code,
-                                url: a.pdf,
-                                id: a.id
-                            })))
-                    )
-                    .catch((err) => {
-                        Alerter.set("alert-danger", $translate.instant("autorenew_service_update_step2_error"));
-                        return $q.reject(err);
-                    })
-                    .finally(() => {
-                        $scope.loading.contracts = false;
-                        if ($scope.contracts.length === 0) {
-                            $scope.agree.value = true;
-                        }
-                    });
-            }
-            $scope.agree.value = true;
-            return null;
-        };
-
-        function hasServiceChangedToAutorenew () {
-            return $scope.selectedServices.some((s) => !s.renew.automatic && s.newRenewType === "auto");
+            this.Alerter = Alerter;
+            this.BillingAutoRenew = BillingAutoRenew;
+            this.billingRenewHelper = billingRenewHelper;
+            this.UserContractService = UserContractService;
         }
 
-        $scope.updateRenew = function () {
-            const result = [];
-            angular.forEach($scope.selectedServices, (service) => {
-                if ($scope.hasChange(service)) {
-                    const hasSubProducts = !_.isEmpty(service.subProducts);
-                    const isRenewManual = service.newRenewType === "manuel";
-                    const renewPeriod = isRenewManual ? null : service.newRenewPeriod;
+        $onInit () {
+            if (_(this.servicesToChangeRenewalOf).isEmpty()) {
+                return this.$state
+                    .go("^")
+                    .then(() => this.Alerter.set("alert-danger", this.$translate.instant("billing_autoRenew_update_error_emptyArguments")));
+            }
 
-                    if (hasSubProducts) {
-                        angular.forEach(service.subProducts, (pService) => {
-                            pService.renew.period = renewPeriod;
-                            pService.renew.manualPayment = isRenewManual;
-                            result.push(_.pick(pService, ["serviceId", "serviceType", "renew"]));
-                        });
-                    } else {
-                        service.renew.period = renewPeriod;
-                        service.renew.manualPayment = isRenewManual;
-                        result.push(_.pick(service, ["serviceId", "serviceType", "renew"]));
-                    }
+            /** @type {?ServiceType[]} */
+            this.serviceTypes = this.convertServicesToServiceTypes(this.servicesToChangeRenewalOf);
+
+            this.contractsToSign = [];
+
+            return this.$q.when();
+        }
+
+        convertServicesToServiceTypes (services) {
+            if (!_(services).isArray()) {
+                throw new TypeError(`[billingAutoRenewUpdateCtrl.convertServicesToServiceTypes] Argument services (${services}) is not an array`);
+            }
+
+            return services.reduce((previousValues, currentService) => {
+                const searchResult = $ctrl.searchIfArrayContainsItem(previousValues, { name: currentService.serviceType });
+
+                if (searchResult.wasSuccessful) {
+                    const alreadyExistingServiceType = searchResult.item.value;
+                    const updatedServiceType = this.pushServiceIntoServiceType(currentService, alreadyExistingServiceType);
+
+                    return $ctrl.replaceServiceTypeInServiceTypes({ serviceTypes: previousValues, serviceTypeToReplace: alreadyExistingServiceType, replacingServiceType: updatedServiceType });
                 }
-            });
 
-            let promise = UserContractService.acceptAgreements($scope.contracts)
-                .then(() => AutoRenew.updateServices(result))
-                .then(() => {
-                    $scope.$emit(AUTORENEW_EVENT.MODIFY, result);
-                    Alerter.set("alert-success", $translate.instant("autorenew_service_update_step2_success"));
-                })
-                .catch((err) => {
-                    Alerter.alertFromSWS($translate.instant("autorenew_service_update_step2_error"), err);
-                    return $q.reject(err);
-                });
+                const newServiceType = $ctrl.createServiceType({ name: currentService.serviceType });
+                const updatedServiceType = this.pushServiceIntoServiceType(currentService, newServiceType);
 
-            /**
-             *  turns on global autorenew when user activates a service
-             */
-            if (_.some(result, "renew.automatic")) {
-                promise = promise.then(() =>
-                    AutoRenew.getAutorenew().then(({ active, renewDay }) => {
-                        if (active) {
-                            return $q.when();
+                return [...previousValues, updatedServiceType];
+            }, []);
+        }
+
+        static searchIfArrayContainsItem (array, item) {
+            const index = _(array).findIndex((arrayItem) => arrayItem.name === item.name);
+            const searchWasSuccessful = index !== -1;
+
+            return {
+                wasSuccessful: searchWasSuccessful,
+                item: searchWasSuccessful ?
+                    {
+                        value: _(array[index]).clone(true),
+                        index
+                    } :
+                    null
+            };
+        }
+
+        pushServiceIntoServiceType (service, serviceType) {
+            $ctrl.testIsServiceTypeValid(serviceType);
+
+            const services = [...serviceType.services, service];
+            return this.updateServicesForServiceTypes(services, serviceType);
+        }
+
+        deleteServiceFromServiceType (service, serviceType) {
+            $ctrl.testIsServiceTypeValid(serviceType);
+
+            const services = serviceType.services.filter((currentService) => currentService.serviceId !== service.serviceId);
+            return _(services).isEmpty() ? null : this.updateServicesForServiceTypes(services, serviceType);
+        }
+
+        updateServicesForServiceTypes (services, serviceType) {
+            const possibleRenewPeriods = services.reduce((previousValues, service) => _(previousValues).isEmpty() ? service.possibleRenewPeriod : _(previousValues).intersection(service.possibleRenewPeriod).value(), []);
+            const defaultManualRenewalType = {
+                displayValue: this.$translate.instant("autorenew_service_renew_manuel"),
+                value: "MANUAL",
+                isAutomatic: false
+            };
+            const availableRenewalTypes = [defaultManualRenewalType, ...possibleRenewPeriods.map((availableRenewalType) => ({
+                displayValue: this.$translate.instant(this.$filter("renewFrequence")(availableRenewalType)),
+                value: availableRenewalType,
+                isAutomatic: true
+            }))];
+
+            const allowRenewalChange = services.every((service) => $ctrl.doesServiceAllowsRenewalChange(service));
+            const propertiesToUpdate = { services, allowRenewalChange, availableRenewalTypes, possibleRenewPeriods };
+
+            return $ctrl.updateServiceTypeProperties(serviceType, propertiesToUpdate);
+        }
+
+        static testIsServiceTypeValid (serviceType) {
+            const inputServiceTypeHasNameProperty = !_(serviceType).chain()
+                .get("name")
+                .isEmpty()
+                .value();
+
+            if (!inputServiceTypeHasNameProperty) {
+                throw new Error(`[billingAutoRenewUpdateCtrl] input serviceType (${serviceType}) requires a name property`);
+            }
+        }
+
+        static updateServiceTypeProperties (serviceType, properties) {
+            return _(serviceType).chain()
+                .clone(true)
+                .assign(properties)
+                .value();
+        }
+
+        static replaceServiceTypeInServiceTypes ({ serviceTypes, serviceTypeToReplace, replacingServiceType }) {
+            const searchResult = $ctrl.searchIfArrayContainsItem(serviceTypes, { name: serviceTypeToReplace.name });
+
+            if (!searchResult.wasSuccessful) {
+                throw new Error(`[billingAutoRenewUpdateCtrl.buildNewServiceTypeArrayWithUpdatedServiceType] Can't find input serviceTypeToReplace ${serviceTypeToReplace} in input serviceTypes ${serviceTypes}`);
+            }
+
+            const serviceTypesClone = serviceTypes.slice();
+            serviceTypesClone[searchResult.item.index] = replacingServiceType;
+            return serviceTypesClone;
+        }
+
+        static createServiceType ({ name }) {
+            if (!_(name).isString()) {
+                throw new TypeError(`[billingAutoRenewUpdateCtrl.newServiceType] Argument name (${name}) is not a string`);
+            }
+
+            return {
+                name,
+                services: []
+            };
+        }
+
+        static doesServiceAllowsRenewalChange (service) {
+            if (!_(service.possibleRenewPeriod).isArray()) {
+                throw new TypeError(`[billingAutoRenewUpdateCtrl.doesServiceAllowsRenewalChange]: input service.possibleRenewPeriod ${service.possibleRenewPeriod} should be an Array`);
+            }
+
+            const canBeRenewed = !service.renew.forced && !_(service.possibleRenewPeriod).isEmpty();
+            const onlyManualRenewalIsAllowed = _(service.possibleRenewPeriod).last() === 0;
+
+            return canBeRenewed && !onlyManualRenewalIsAllowed;
+        }
+
+        fetchContractsToSign () {
+            if (this.promiseToFetchContractsToSign === undefined) {
+                this.isFetchingContractsToSign = true;
+
+                this.promiseToFetchContractsToSign = this.UserContractService
+                    .getAgreementsToValidate((contract) => this.AutoRenew.getAutorenewContractIds().includes(contract.contractId))
+                    .then((agreementsToValidate) => {
+                        this.contractsToSign = agreementsToValidate.map((contract) => ({
+                            name: contract.code,
+                            url: contract.pdf,
+                            id: contract.id
+                        }));
+
+                        if (_(this.contractsToSign).isEmpty()) {
+                            this.contractsAreSigned = true;
                         }
+                    })
+                    .catch(() => {
+                        this.Alerter.set("alert-danger", this.$translate.instant("autorenew_service_update_step2_error"));
+                    })
+                    .finally(() => {
+                        this.isFetchingContractsToSign = false;
+                    });
+            }
 
-                        return AutoRenew.putAutorenew({
+            return this.promiseToFetchContractsToSign;
+        }
+
+        onClickOnServiceChipCloseButton (service, serviceType) {
+            const updatedServiceType = this.deleteServiceFromServiceType(service, serviceType);
+
+            if (updatedServiceType === null) {
+                this.serviceTypes = this.serviceTypes.filter((currentServiceType) => currentServiceType.name !== serviceType.name);
+            } else {
+                this.serviceTypes = $ctrl.replaceServiceTypeInServiceTypes({ serviceTypes: this.serviceTypes, serviceTypeToReplace: serviceType, replacingServiceType: updatedServiceType });
+            }
+        }
+
+        updateConfirmationButtonAvailability () {
+            this.confirmationButtonIsAvailable = _(this.serviceTypes).find((serviceType) => serviceType.selectedRenewalType) !== undefined;
+            this.userMustSignContracts = _(this.serviceTypes).find((serviceType) => _(serviceType.selectedRenewalType).get("isAutomatic", false)) !== undefined;
+
+            return this.userMustSignContracts ? this.fetchContractsToSign() : this.$q.when();
+        }
+
+        sendRenewals () {
+            this.isSendingRenewal = true;
+
+            const servicesToSend = [].concat(...this.serviceTypes
+                .filter((serviceType) => serviceType.selectedRenewalType)
+                .map((serviceType) => serviceType.services.map((service) => {
+                    const renewalIsAutomatic = serviceType.selectedRenewalType.isAutomatic;
+                    const renewalPeriod = renewalIsAutomatic ? serviceType.selectedRenewalType.value : null;
+
+                    const propertiesToUpdate = service.renewalType === "automaticV2016" ?
+                        {
+                            period: renewalPeriod,
+                            manualPayment: !renewalIsAutomatic
+                        } :
+                        {
+                            period: renewalPeriod,
+                            automatic: renewalIsAutomatic
+                        };
+
+                    const serviceHasSubProducts = !_(service.subProducts).isEmpty();
+                    if (serviceHasSubProducts) {
+                        return service.subProducts.map((subService) => ({
+                            serviceId: subService.serviceId,
+                            serviceType: serviceType.name,
+                            renew: _(subService.renew)
+                                .chain()
+                                .clone(true)
+                                .assign(propertiesToUpdate)
+                                .value()
+                        }));
+                    }
+
+                    return {
+                        serviceId: service.serviceId,
+                        serviceType: serviceType.name,
+                        renew: _(service.renew)
+                            .chain()
+                            .clone(true)
+                            .assign(propertiesToUpdate)
+                            .value()
+                    };
+                })));
+
+            return this.UserContractService
+                .acceptAgreements(this.contractsToSign)
+                .then(() => this.BillingAutoRenew.updateServices(servicesToSend))
+                .then(() => this.BillingAutoRenew.getAutorenew())
+                .then(({ active, renewDay }) =>
+                    active ?
+                        this.$q.when() :
+                        this.BillingAutoRenew.putAutorenew({
                             active: true,
                             renewDay: renewDay > 0 && renewDay <= 30 ? renewDay : 1
                         })
-                            .then(() => {
-                                Alerter.set("alert-success", $translate.instant("autorenew_service_update_renewal_activation_notice"));
-                            })
-                            .catch((err) => {
-                                Alerter.set("alert-danger", $translate.instant("autorenew_service_update_renewal_activation_error", {
-                                    t0: err
-                                }));
-                                return $q.reject(err);
-                            });
-                    })
-                );
-            }
-
-            promise.finally(() => $scope.closeAction());
-        };
-
-        $scope.onChange = function () {
-            $scope.hasChanged = false;
-            angular.forEach($scope.selectedServices, (service) => {
-                if (service.renew.automatic || service.renew.forced) {
-                    if (service.newRenewType === "manuel" || service.renew.period !== service.newRenewPeriod) {
-                        $scope.hasChanged = true;
-                    }
-                } else if (!(service.renew.automatic || service.renew.forced) && service.newRenewType === "auto") {
-                    $scope.hasChanged = true;
-                    if (!service.newRenewPeriod && _.isArray(service.possibleRenewPeriod) && !_.isEmpty(service.possibleRenewPeriod)) {
-                        service.newRenewPeriod = service.renew.period || service.possibleRenewPeriod[0];
-                    }
-                }
-            });
-        };
-
-        $scope.hasChange = function (service) {
-            if (service.renew.automatic && service.newRenewType === "manuel") {
-                return true;
-            }
-
-            if (service.renew.automatic && service.newRenewPeriod !== service.renew.period) {
-                return true;
-            }
-
-            if (!service.renew.automatic && service.newRenewType === "auto") {
-                return true;
-            }
-
-            return false;
-        };
-
-        $scope.getPeriodTranslation = function (period) {
-            let message = "";
-            switch (period) {
-            case 0:
-                message = $translate.instant("autorenew_service_renew_manuel");
-                break;
-            case 12:
-                message = $translate.instant("autorenew_service_update_period_12");
-                break;
-            default:
-                message = $translate.instant("autorenew_service_update_period_month", {
-                    t0: period
-                });
-            }
-            return message;
-        };
-
-        $scope.closeAction = function () {
-            $rootScope.$broadcast(AutoRenew.events.AUTORENEW_CHANGED);
-            $scope.resetAction();
-        };
-    }
-]);
+                )
+                .then(() => {
+                    this.Alerter.set("alert-success", this.$translate.instant("autorenew_service_update_renewal_activation_notice"));
+                })
+                .catch((err) => {
+                    this.Alerter.set("alert-danger", this.$translate.instant("autorenew_service_update_renewal_activation_error", {
+                        t0: err
+                    }));
+                })
+                .finally(() => this.$state.go("^"));
+        }
+    });

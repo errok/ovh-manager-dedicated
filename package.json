@@ -14,7 +14,7 @@
     "preview-changelog": "npm-scripts-config preview-changelog"
   },
   "dependencies": {
-    "@bower_components/angular-ui-router": "angular-ui/angular-ui-router-bower#^1.0.0",
+    "@bower_components/angular-ui-router": "angular-ui/angular-ui-router-bower#1.0.20",
     "@bower_components/angular-ui-utils": "angular-ui/ui-utils#~0.2.3",
     "@bower_components/angular-ui-validate": "angular-ui/ui-validate#~1.2.2",
     "@bower_components/bootstrap-datetimepicker": "tarruda/bootstrap-datetimepicker#~0.0.11",

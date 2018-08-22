@@ -565,7 +565,7 @@ module.exports = function (grunt) {
                         vmsUrl: constants[target].vmsUrl,
                         travauxUrl: constants[target].travauxUrl,
                         aapiHeaderName: "X-Ovh-Session",
-                        vrackUrl: constants[target].vrackUrl,         // needed for US - add into constants.config.js for other zone if needed
+                        vrackUrl: constants[target].vrackUrl, // needed for US - add into constants.config.js for other zone if needed
                         MANAGER_URLS: constants[target].MANAGER_URLS,
                         REDIRECT_URLS: constants[target].REDIRECT_URLS,
                         DEFAULT_LANGUAGE: constants[target].DEFAULT_LANGUAGE,
@@ -597,6 +597,7 @@ module.exports = function (grunt) {
                         "Billing.services",
                         "Billing.controllers",
                         "Billing.directives",
+                        "Billing.components",
                         "Billing.filters",
                         "ovh-angular-export-csv"
                     ]
@@ -715,7 +716,7 @@ module.exports = function (grunt) {
                         travauxUrl: constants[target].travauxUrl,
                         swsProxyRootPath: "<%= swsProxyPath %>",
                         aapiHeaderName: "X-Ovh-2api-Session",
-                        vrackUrl: constants[target].vrackUrl,         // needed for US - add into constants.config.js for other zone if needed
+                        vrackUrl: constants[target].vrackUrl, // needed for US - add into constants.config.js for other zone if needed
                         MANAGER_URLS: constants[target].MANAGER_URLS,
                         REDIRECT_URLS: constants[target].REDIRECT_URLS,
                         DEFAULT_LANGUAGE: constants[target].DEFAULT_LANGUAGE,
@@ -747,6 +748,7 @@ module.exports = function (grunt) {
                         "Billing.services",
                         "Billing.controllers",
                         "Billing.directives",
+                        "Billing.components",
                         "Billing.filters",
                         "ovh-angular-export-csv"
                     ]

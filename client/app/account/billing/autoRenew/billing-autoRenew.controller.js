@@ -13,6 +13,7 @@ angular.module("Billing.controllers").controller("Billing.controllers.AutoRenew"
     "$http",
     "$window",
     "$timeout",
+    "$state",
     "Alerter",
     "AUTORENEW_EVENT",
     "constants",
@@ -25,7 +26,7 @@ angular.module("Billing.controllers").controller("Billing.controllers.AutoRenew"
     "$translate",
     "SUBSIDIARIES_WITH_RECENT_AUTORENEW",
 
-    function ($rootScope, $scope, $location, $filter, $q, $http, $window, $timeout,
+    function ($rootScope, $scope, $location, $filter, $q, $http, $window, $timeout, $state,
               Alerter, AUTORENEW_EVENT, constants, billingUrls, BILLING_BASE_URL, AutoRenew,
               PaymentInformation, renewHelper, User, $translate, SUBSIDIARIES_WITH_RECENT_AUTORENEW) {
         "use strict";
@@ -364,17 +365,10 @@ angular.module("Billing.controllers").controller("Billing.controllers.AutoRenew"
             uncheckAll();
         };
 
-        $scope.updateServices = function (service) {
-            if (service) {
-                $scope.services.selected = [service];
-            }
-            if ($scope.services.selected.length) {
-                $scope.setAction("update", {
-                    services: _.clone($scope.services.selected, true),
-                    nicRenew: $scope.nicRenew,
-                    urlRenew: $scope.getRenewUrl()
-                }, "autoRenew");
-            }
+        $scope.updateServices = function (serviceName) {
+            $state.go("app.account.billing.service.autoRenew.update", {
+                servicesToChangeRenewalOf: serviceName ? [serviceName] : $scope.services.selected
+            });
         };
 
         $scope.verifyUserHasAutoRenewRightOnService = function (service) {

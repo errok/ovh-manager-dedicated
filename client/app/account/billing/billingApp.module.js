@@ -118,6 +118,17 @@ angular
                 controller: "Billing.controllers.AutoRenew"
             });
 
+            $stateProvider.state("app.account.billing.service.autoRenew.update", {
+                url: "/update",
+                component: "billingAutoRenewUpdate",
+                params: {
+                    servicesToChangeRenewalOf: []
+                },
+                resolve: {
+                    servicesToChangeRenewalOf: ($transition$) => $transition$.params().servicesToChangeRenewalOf
+                }
+            });
+
             /**
              * ROUTE: Ovh Fidelity
              */
